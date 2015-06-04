@@ -2,8 +2,13 @@
 import io.undertow.Handlers;
 import io.undertow.Undertow;
 import io.undertow.UndertowOptions;
+import io.undertow.attribute.ExchangeAttributes;
+import io.undertow.attribute.RequestURLAttribute;
+import io.undertow.predicate.Predicates;
+import io.undertow.server.HttpHandler;
+import io.undertow.server.HttpServerExchange;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
-import io.undertow.util.Headers;
+import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
 
 import java.io.IOException;
@@ -17,30 +22,23 @@ public class MrServer {
 
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(getKeyManagers(), null, null);
-
         Undertow.builder()
                 .setServerOption(UndertowOptions.ENABLE_HTTP2, true)
                 .addHttpListener(8080, "localhost")
                 .addHttpsListener(8081, "localhost", sslContext)
-                .setHandler(Handlers.path().addPrefixPath("/pages", exchange2 -> {
-                    exchange2.dispatch(Handlers.resource(new ClassPathResourceManager(MrServer.class.getClassLoader(),"pages")));
-                }).addExactPath("/demo", exchange -> {
-                    System.out.println("Serving /demo");
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE,
-                            "text/html");
-                    exchange.getResponseSender().send("<html><body>Hello World<iframe src=\"/pushy\"></iframe></body></html>");
-                    if (exchange.getConnection().isPushSupported()) {
-                        System.out.println("Pushing pushy");
-                        exchange.getConnection().pushResource("/pushy", Methods.GET, exchange.getRequestHeaders());
-                    } else {
-                        System.out.println("Push not supported :(");
-                    }
-                }).addExactPath("/pushy", exchange1 -> {
-                    System.out.println("Serving pushy");
-                    exchange1.getResponseHeaders().put(Headers.CONTENT_TYPE,
-                            "text/html");
-                    exchange1.getResponseSender().send("<html><body>Hello Frame</body></html>");
-                })).build().start();
+                .setHandler(new HttpHandler() {
+                                @Override
+                                public void handleRequest(HttpServerExchange exchange) throws Exception {
+                                    Handlers.resource(
+                                            new ClassPathResourceManager(MrServer.class.getClassLoader(), "")).handleRequest(exchange);
+                                    if (exchange.getConnection().isPushSupported()) {
+
+                                        exchange.getConnection().pushResource("/css/styles.css", Methods.GET, exchange.getRequestHeaders());
+                                    }
+                                }
+                            }
+                        //.setAllowed(Predicates.contains(ExchangeAttributes.requestURL(), "pages"))
+                ).build().start();
     }
 
     private static KeyManager[] getKeyManagers() {
